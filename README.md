@@ -136,4 +136,4 @@ Set yourself progressive goals:
 
 **Have fun and improve your mouse skills!** 🎮🚀
 
-*Created as a browser-based tool for mouse coordination training through interactive gameplay with [Claude](https://claude.com/product/claude-code) *
+*Created as a browser-based tool for mouse coordination training through interactive gameplay with [Claude](https://claude.com/product/claude-code)*

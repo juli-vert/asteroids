@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaxy Dodge - Mouse Training Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            background: #000;
+        }
+
+        #gameCanvas {
+            display: block;
+            cursor: none;
+        }
+
+        #score {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            z-index: 10;
+        }
+
+        #highScore {
+            position: absolute;
+            top: 55px;
+            left: 20px;
+            color: #ffaa00;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            z-index: 10;
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            color: #fff;
+            display: none;
+            z-index: 100;
+            border: 3px solid #00ffff;
+        }
+
+        #gameOver h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #ff4444;
+            text-shadow: 3px 3px 6px rgba(255, 68, 68, 0.5);
+        }
+
+        #gameOver h2 {
+            font-size: 36px;
+            margin-bottom: 10px;
+            color: #00ffff;
+        }
+
+        #gameOver h3 {
+            font-size: 24px;
+            margin-bottom: 30px;
+            color: #ffaa00;
+        }
+
+        #restartBtn {
+            background: linear-gradient(45deg, #00ffff, #0088ff);
+            color: #000;
+            border: none;
+            padding: 15px 40px;
+            font-size: 24px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        #restartBtn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+        }
+
+        #restartBtn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="score">Score: 0</div>
+    <div id="highScore">High Score: 0</div>
+    <div id="gameOver">
+        <h1>GAME OVER!</h1>
+        <h2 id="finalScore">Score: 0</h2>
+        <h3 id="finalHighScore">High Score: 0</h3>
+        <button id="restartBtn">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const highScoreElement = document.getElementById('highScore');
+        const gameOverElement = document.getElementById('gameOver');
+        const finalScoreElement = document.getElementById('finalScore');
+        const finalHighScoreElement = document.getElementById('finalHighScore');
+        const restartBtn = document.getElementById('restartBtn');
+
+        // Set canvas to full screen
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Game state
+        let gameRunning = false;
+        let score = 0;
+        let highScore = 0;
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let asteroids = [];
+        let backgroundStars = [];
+        let laserBeams = []; // Left click weapon - blue lasers
+        let plasmaBalls = []; // Right click weapon - green plasma
+
+        // Spaceship properties
+        const spaceship = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            size: 30,
+            speed: 0.15
+        };
+
+        // Generate background stars
+        function generateStars() {
+            backgroundStars = [];
+            for (let i = 0; i < 200; i++) {
+                backgroundStars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: Math.random() * 2 + 0.5,
+                    opacity: Math.random() * 0.5 + 0.5,
+                    twinkleSpeed: Math.random() * 0.02 + 0.01
+                });
+            }
+        }
+
+        // Draw galaxy background
+        function drawBackground() {
+            // Deep space gradient
+            const gradient = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, 0,
+                canvas.width / 2, canvas.height / 2, canvas.width / 2
+            );
+            gradient.addColorStop(0, '#1a1a3e');
+            gradient.addColorStop(0.5, '#0f0f2e');
+            gradient.addColorStop(1, '#000000');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw stars
+            backgroundStars.forEach(star => {
+                star.opacity += star.twinkleSpeed;
+                if (star.opacity > 1 || star.opacity < 0.3) {
+                    star.twinkleSpeed *= -1;
+                }
+
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
+                ctx.fill();
+            });
+        }
+
+        // Draw spaceship
+        function drawSpaceship() {
+            ctx.save();
+            ctx.translate(spaceship.x, spaceship.y);
+
+            // Calculate angle to point towards mouse
+            const angle = Math.atan2(mouseY - spaceship.y, mouseX - spaceship.x);
+            ctx.rotate(angle + Math.PI / 2);
+
+            // Spaceship body (triangle shape)
+            ctx.beginPath();
+            ctx.moveTo(0, -spaceship.size);
+            ctx.lineTo(-spaceship.size * 0.6, spaceship.size * 0.7);
+            ctx.lineTo(spaceship.size * 0.6, spaceship.size * 0.7);
+            ctx.closePath();
+
+            // Gradient fill
+            const gradient = ctx.createLinearGradient(0, -spaceship.size, 0, spaceship.size);
+            gradient.addColorStop(0, '#00ffff');
+            gradient.addColorStop(0.5, '#0088ff');
+            gradient.addColorStop(1, '#0044ff');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Outline
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Cockpit
+            ctx.beginPath();
+            ctx.arc(0, -spaceship.size * 0.3, spaceship.size * 0.25, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.strokeStyle = '#0088ff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Engine glow
+            ctx.beginPath();
+            ctx.moveTo(-spaceship.size * 0.4, spaceship.size * 0.7);
+            ctx.lineTo(0, spaceship.size * 1.2);
+            ctx.lineTo(spaceship.size * 0.4, spaceship.size * 0.7);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(255, 150, 0, 0.7)';
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // Draw asteroid
+        function drawAsteroid(asteroid) {
+            ctx.save();
+            ctx.translate(asteroid.x, asteroid.y);
+            ctx.rotate(asteroid.rotation);
+
+            // Add glow effect for special asteroids
+            if (asteroid.isSpecial) {
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = asteroid.type === 'brown' ? '#ff8800' : '#00ffff';
+            }
+
+            // Create rocky shape
+            ctx.beginPath();
+            const points = 8;
+            for (let i = 0; i < points; i++) {
+                const angle = (Math.PI * 2 / points) * i;
+                const radiusVariation = asteroid.size * (0.7 + Math.random() * 0.3);
+                const x = Math.cos(angle) * radiusVariation;
+                const y = Math.sin(angle) * radiusVariation;
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.closePath();
+
+            // Gradient fill for 3D effect - different colors based on type
+            const gradient = ctx.createRadialGradient(
+                -asteroid.size * 0.3, -asteroid.size * 0.3, 0,
+                0, 0, asteroid.size
+            );
+
+            // Calculate damage opacity for visual feedback
+            const damageOpacity = 1 - (asteroid.health / asteroid.maxHealth) * 0.5;
+
+            if (asteroid.type === 'brown') {
+                // Brown asteroids - destroyed by left click
+                if (asteroid.isSpecial) {
+                    gradient.addColorStop(0, '#ffaa55');
+                    gradient.addColorStop(0.5, '#aa5533');
+                    gradient.addColorStop(1, '#6E2723');
+                } else {
+                    gradient.addColorStop(0, '#8B7355');
+                    gradient.addColorStop(0.5, '#5C4033');
+                    gradient.addColorStop(1, '#3E2723');
+                }
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                ctx.strokeStyle = '#2E1A13';
+            } else {
+                // White/ice asteroids - destroyed by right click
+                if (asteroid.isSpecial) {
+                    gradient.addColorStop(0, '#ffffff');
+                    gradient.addColorStop(0.5, '#88ddff');
+                    gradient.addColorStop(1, '#4488dd');
+                } else {
+                    gradient.addColorStop(0, '#ffffff');
+                    gradient.addColorStop(0.5, '#c0d8e8');
+                    gradient.addColorStop(1, '#8b9bb3');
+                }
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                ctx.strokeStyle = '#6a7a8a';
+            }
+
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Add some crater/texture details
+            if (asteroid.type === 'brown') {
+                ctx.fillStyle = 'rgba(46, 26, 19, 0.5)';
+            } else {
+                ctx.fillStyle = 'rgba(150, 180, 200, 0.5)';
+            }
+            ctx.beginPath();
+            ctx.arc(asteroid.size * 0.3, asteroid.size * 0.2, asteroid.size * 0.15, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(-asteroid.size * 0.2, -asteroid.size * 0.3, asteroid.size * 0.1, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw health bar for damaged asteroids
+            if (asteroid.health < asteroid.maxHealth) {
+                ctx.restore();
+                ctx.save();
+                ctx.translate(asteroid.x, asteroid.y);
+
+                const barWidth = asteroid.size * 1.5;
+                const barHeight = 6;
+                const barY = -asteroid.size - 15;
+
+                // Background
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(-barWidth / 2, barY, barWidth, barHeight);
+
+                // Health
+                const healthWidth = (asteroid.health / asteroid.maxHealth) * barWidth;
+                ctx.fillStyle = asteroid.health > asteroid.maxHealth * 0.5 ? '#00ff00' :
+                               asteroid.health > asteroid.maxHealth * 0.25 ? '#ffaa00' : '#ff0000';
+                ctx.fillRect(-barWidth / 2, barY, healthWidth, barHeight);
+
+                // Border
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(-barWidth / 2, barY, barWidth, barHeight);
+
+                // Display points value for special asteroids
+                if (asteroid.isSpecial) {
+                    ctx.font = 'bold 24px Arial';
+                    ctx.fillStyle = '#ffff00';
+                    ctx.textAlign = 'center';
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 3;
+                    ctx.strokeText('100 PTS!', 0, barY - 10);
+                    ctx.fillText('100 PTS!', 0, barY - 10);
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // Create new asteroid
+        function createAsteroid() {
+            const side = Math.floor(Math.random() * 4); // 0: top, 1: right, 2: bottom, 3: left
+            const speedMultiplier = Math.random() * 1.5 + 0.5; // Random speed between 0.5x and 2x
+            let x, y, vx, vy;
+
+            switch(side) {
+                case 0: // top
+                    x = Math.random() * canvas.width;
+                    y = -50;
+                    vx = (Math.random() - 0.5) * 3 * speedMultiplier;
+                    vy = (Math.random() * 2 + 1) * speedMultiplier;
+                    break;
+                case 1: // right
+                    x = canvas.width + 50;
+                    y = Math.random() * canvas.height;
+                    vx = -(Math.random() * 2 + 1) * speedMultiplier;
+                    vy = (Math.random() - 0.5) * 3 * speedMultiplier;
+                    break;
+                case 2: // bottom
+                    x = Math.random() * canvas.width;
+                    y = canvas.height + 50;
+                    vx = (Math.random() - 0.5) * 3 * speedMultiplier;
+                    vy = -(Math.random() * 2 + 1) * speedMultiplier;
+                    break;
+                case 3: // left
+                    x = -50;
+                    y = Math.random() * canvas.height;
+                    vx = (Math.random() * 2 + 1) * speedMultiplier;
+                    vy = (Math.random() - 0.5) * 3 * speedMultiplier;
+                    break;
+            }
+
+            // Check for special giant asteroid (1% chance)
+            const isSpecial = Math.random() < 0.01;
+
+            // Randomly choose asteroid type: brown (left click) or white (right click)
+            const type = Math.random() < 0.5 ? 'brown' : 'white';
+
+            let size, sizeLevel, maxHealth, points;
+
+            if (isSpecial) {
+                // Special giant asteroid - 20x bigger
+                size = 200;
+                sizeLevel = 100; // Special indicator
+                maxHealth = 20; // More hits for giant asteroid
+                points = 100;
+            } else {
+                // Regular asteroids - sizes from 1 to 5
+                sizeLevel = Math.floor(Math.random() * 5) + 1; // 1 to 5
+                size = 20 + (sizeLevel * 10); // 30, 40, 50, 60, 70
+                maxHealth = sizeLevel;
+                points = sizeLevel;
+            }
+
+            asteroids.push({
+                x: x,
+                y: y,
+                vx: vx,
+                vy: vy,
+                size: size,
+                sizeLevel: sizeLevel,
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.05,
+                type: type,
+                health: maxHealth,
+                maxHealth: maxHealth,
+                points: points,
+                isSpecial: isSpecial
+            });
+        }
+
+        // Check collision between spaceship and asteroid
+        function checkCollision(asteroid) {
+            const dx = spaceship.x - asteroid.x;
+            const dy = spaceship.y - asteroid.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < spaceship.size + asteroid.size * 0.8;
+        }
+
+        // Fire laser beam (left click weapon for brown asteroids)
+        function fireLaser() {
+            const angle = Math.atan2(mouseY - spaceship.y, mouseX - spaceship.x);
+            laserBeams.push({
+                x: spaceship.x,
+                y: spaceship.y,
+                vx: Math.cos(angle) * 10,
+                vy: Math.sin(angle) * 10,
+                length: 30,
+                angle: angle
+            });
+        }
+
+        // Fire plasma ball (right click weapon for white asteroids)
+        function firePlasma() {
+            const angle = Math.atan2(mouseY - spaceship.y, mouseX - spaceship.x);
+            plasmaBalls.push({
+                x: spaceship.x,
+                y: spaceship.y,
+                vx: Math.cos(angle) * 8,
+                vy: Math.sin(angle) * 8,
+                size: 8,
+                life: 100
+            });
+        }
+
+        // Draw laser beam
+        function drawLaser(laser) {
+            ctx.save();
+            ctx.translate(laser.x, laser.y);
+            ctx.rotate(laser.angle);
+
+            // Blue laser beam
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00ffff';
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(laser.length, 0);
+            ctx.stroke();
+
+            // Bright core
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(laser.length, 0);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // Draw plasma ball
+        function drawPlasma(plasma) {
+            ctx.save();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#00ff00';
+
+            // Outer glow
+            const gradient = ctx.createRadialGradient(plasma.x, plasma.y, 0, plasma.x, plasma.y, plasma.size);
+            gradient.addColorStop(0, '#ffffff');
+            gradient.addColorStop(0.3, '#00ff00');
+            gradient.addColorStop(1, 'rgba(0, 255, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(plasma.x, plasma.y, plasma.size, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bright core
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(plasma.x, plasma.y, plasma.size * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // Check projectile collision with asteroids
+        function checkProjectileCollision(projectile, projectileType) {
+            for (let i = asteroids.length - 1; i >= 0; i--) {
+                const asteroid = asteroids[i];
+                const dx = projectile.x - asteroid.x;
+                const dy = projectile.y - asteroid.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                // Check if correct weapon type hits correct asteroid type
+                if (projectileType === 'laser' && asteroid.type === 'brown' && distance < asteroid.size) {
+                    // Reduce health by 1
+                    asteroid.health--;
+
+                    // If health reaches 0, destroy asteroid and award points
+                    if (asteroid.health <= 0) {
+                        score += asteroid.points;
+                        scoreElement.textContent = `Score: ${score}`;
+                        asteroids.splice(i, 1);
+                    }
+                    return true;
+                } else if (projectileType === 'plasma' && asteroid.type === 'white' && distance < asteroid.size + projectile.size) {
+                    // Reduce health by 1
+                    asteroid.health--;
+
+                    // If health reaches 0, destroy asteroid and award points
+                    if (asteroid.health <= 0) {
+                        score += asteroid.points;
+                        scoreElement.textContent = `Score: ${score}`;
+                        asteroids.splice(i, 1);
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Update game state
+        function update() {
+            if (!gameRunning) return;
+
+            // Smoothly move spaceship towards mouse
+            const dx = mouseX - spaceship.x;
+            const dy = mouseY - spaceship.y;
+            spaceship.x += dx * spaceship.speed;
+            spaceship.y += dy * spaceship.speed;
+
+            // Update laser beams
+            for (let i = laserBeams.length - 1; i >= 0; i--) {
+                const laser = laserBeams[i];
+                laser.x += laser.vx;
+                laser.y += laser.vy;
+
+                // Check collision with asteroids
+                if (checkProjectileCollision(laser, 'laser')) {
+                    laserBeams.splice(i, 1);
+                    continue;
+                }
+
+                // Remove off-screen lasers
+                if (laser.x < -50 || laser.x > canvas.width + 50 ||
+                    laser.y < -50 || laser.y > canvas.height + 50) {
+                    laserBeams.splice(i, 1);
+                }
+            }
+
+            // Update plasma balls
+            for (let i = plasmaBalls.length - 1; i >= 0; i--) {
+                const plasma = plasmaBalls[i];
+                plasma.x += plasma.vx;
+                plasma.y += plasma.vy;
+                plasma.life--;
+
+                // Check collision with asteroids
+                if (checkProjectileCollision(plasma, 'plasma')) {
+                    plasmaBalls.splice(i, 1);
+                    continue;
+                }
+
+                // Remove plasma balls when life expires or off-screen
+                if (plasma.life <= 0 || plasma.x < -50 || plasma.x > canvas.width + 50 ||
+                    plasma.y < -50 || plasma.y > canvas.height + 50) {
+                    plasmaBalls.splice(i, 1);
+                }
+            }
+
+            // Update asteroids
+            for (let i = asteroids.length - 1; i >= 0; i--) {
+                const asteroid = asteroids[i];
+                asteroid.x += asteroid.vx;
+                asteroid.y += asteroid.vy;
+                asteroid.rotation += asteroid.rotationSpeed;
+
+                // Check collision with spaceship
+                if (checkCollision(asteroid)) {
+                    gameOver();
+                    return;
+                }
+
+                // Remove off-screen asteroids
+                if (asteroid.x < -100 || asteroid.x > canvas.width + 100 ||
+                    asteroid.y < -100 || asteroid.y > canvas.height + 100) {
+                    asteroids.splice(i, 1);
+                }
+            }
+
+            // Create new asteroids
+            if (Math.random() < 0.02) {
+                createAsteroid();
+            }
+        }
+
+        // Draw everything
+        function draw() {
+            drawBackground();
+
+            // Draw projectiles
+            laserBeams.forEach(laser => drawLaser(laser));
+            plasmaBalls.forEach(plasma => drawPlasma(plasma));
+
+            // Draw asteroids
+            asteroids.forEach(asteroid => drawAsteroid(asteroid));
+
+            // Draw spaceship
+            drawSpaceship();
+        }
+
+        // Game loop
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+
+            // Update high score if current score is higher
+            if (score > highScore) {
+                highScore = score;
+                highScoreElement.textContent = `High Score: ${highScore}`;
+            }
+
+            finalScoreElement.textContent = `Score: ${score}`;
+            finalHighScoreElement.textContent = `High Score: ${highScore}`;
+            gameOverElement.style.display = 'block';
+        }
+
+        // Start game
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            asteroids = [];
+            laserBeams = [];
+            plasmaBalls = [];
+            spaceship.x = canvas.width / 2;
+            spaceship.y = canvas.height / 2;
+            scoreElement.textContent = 'Score: 0';
+            gameOverElement.style.display = 'none';
+        }
+
+        // Mouse move event
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        // Left click - fire laser (for brown asteroids)
+        canvas.addEventListener('click', (e) => {
+            if (gameRunning) {
+                fireLaser();
+            }
+        });
+
+        // Right click - fire plasma (for white asteroids)
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (gameRunning) {
+                firePlasma();
+            }
+            return false;
+        });
+
+        // Restart button
+        restartBtn.addEventListener('click', startGame);
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            generateStars();
+        });
+
+        // Initialize and start
+        generateStars();
+        startGame();
+        gameLoop();
+    </script>
+</body>
+</html>
